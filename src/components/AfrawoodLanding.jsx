@@ -1,10 +1,11 @@
 import React, { useMemo, useRef, useState } from "react";
-import logoImg from "../assets/logo.png";
-import welcomeVideo from "../assets/afra-welcome-avatar.mp4";
 import { useLanguage } from "../i18n/LanguageContext.jsx";
 import { SUPPORTED_LANGUAGES } from "../i18n/translations.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { getCreditSummary } from "../ai/creditSystem.js";
+
+const logoImg = "/logo.png";
+const welcomeVideo = "/afra-welcome-avatar.mp4";
 
 const NAV_MODES = new Set([
   "script",
@@ -70,7 +71,9 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("dialogue") ||
       q.includes("فیلمنامه") ||
       q.includes("داستان")
-    ) return "script";
+    ) {
+      return "script";
+    }
 
     if (
       q.includes("image") ||
@@ -79,7 +82,9 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("cinematic image") ||
       q.includes("عکس") ||
       q.includes("تصویر")
-    ) return "image";
+    ) {
+      return "image";
+    }
 
     if (
       q.includes("video") ||
@@ -87,7 +92,9 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("text to video") ||
       q.includes("image to video") ||
       q.includes("ویدیو")
-    ) return "video";
+    ) {
+      return "video";
+    }
 
     if (
       q.includes("merge") ||
@@ -96,9 +103,15 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("edit") ||
       q.includes("ادغام") ||
       q.includes("مونتاژ")
-    ) return "merge";
+    ) {
+      return "merge";
+    }
 
-    if (q.includes("subtitle") || q.includes("caption") || q.includes("زیرنویس")) {
+    if (
+      q.includes("subtitle") ||
+      q.includes("caption") ||
+      q.includes("زیرنویس")
+    ) {
       return "subtitle";
     }
 
@@ -108,21 +121,27 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("speaker") ||
       q.includes("صدا") ||
       q.includes("گوینده")
-    ) return "voice";
+    ) {
+      return "voice";
+    }
 
     if (
       q.includes("music") ||
       q.includes("soundtrack") ||
       q.includes("song") ||
       q.includes("موسیقی")
-    ) return "music";
+    ) {
+      return "music";
+    }
 
     if (
       q.includes("export") ||
       q.includes("render") ||
       q.includes("output") ||
       q.includes("خروجی")
-    ) return "export";
+    ) {
+      return "export";
+    }
 
     if (
       q.includes("price") ||
@@ -132,7 +151,9 @@ export default function AfrawoodLanding({ onNavigate }) {
       q.includes("upgrade") ||
       q.includes("اشتراک") ||
       q.includes("قیمت")
-    ) return "pricing";
+    ) {
+      return "pricing";
+    }
 
     return "image";
   }, [query]);
@@ -159,10 +180,18 @@ export default function AfrawoodLanding({ onNavigate }) {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,200,90,0.06),transparent_35%)]" />
 
       <div className="absolute left-8 top-8 z-20 flex flex-wrap items-center gap-6">
-        <button type="button" className={TOP_LINK} onClick={() => setActiveModal("about")}>
+        <button
+          type="button"
+          className={TOP_LINK}
+          onClick={() => setActiveModal("about")}
+        >
           {t("common.about", "About")}
         </button>
-        <button type="button" className={TOP_LINK} onClick={() => setActiveModal("contact")}>
+        <button
+          type="button"
+          className={TOP_LINK}
+          onClick={() => setActiveModal("contact")}
+        >
           {t("common.contactUs", "Contact Us")}
         </button>
       </div>
@@ -180,16 +209,23 @@ export default function AfrawoodLanding({ onNavigate }) {
           ))}
         </select>
 
-        <button type="button" className={TOP_LINK} onClick={() => navigate("pricing")}>
+        <button
+          type="button"
+          className={TOP_LINK}
+          onClick={() => navigate("pricing")}
+        >
           {t("common.pricing", "Pricing")}
         </button>
 
         {isAuthenticated ? (
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className="text-sm text-white/85">{user?.fullName || user?.email || "User"}</div>
+              <div className="text-sm text-white/85">
+                {user?.fullName || user?.email || "User"}
+              </div>
               <div className="text-xs text-white/50">
-                {creditSummary.plan?.name || "Free"} • {creditSummary.creditsRemaining}
+                {creditSummary.plan?.name || "Free"} •{" "}
+                {creditSummary.creditsRemaining}
               </div>
             </div>
             <button type="button" className={TOP_LINK} onClick={logout}>
@@ -197,7 +233,11 @@ export default function AfrawoodLanding({ onNavigate }) {
             </button>
           </div>
         ) : (
-          <button type="button" className={TOP_LINK} onClick={() => openAuth("login")}>
+          <button
+            type="button"
+            className={TOP_LINK}
+            onClick={() => openAuth("login")}
+          >
             {t("common.signUpLogin", "Sign Up / Login")}
           </button>
         )}
@@ -209,6 +249,7 @@ export default function AfrawoodLanding({ onNavigate }) {
             src={logoImg}
             alt="Afrawood"
             className="mb-10 w-[920px] max-w-[98%] object-contain"
+            loading="eager"
           />
 
           <div className="w-full max-w-[760px]">
@@ -221,7 +262,10 @@ export default function AfrawoodLanding({ onNavigate }) {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t("landing.placeholder", "Describe what you want to create...")}
+                  placeholder={t(
+                    "landing.placeholder",
+                    "Describe what you want to create..."
+                  )}
                   className={CHAT_INPUT}
                 />
 
@@ -235,11 +279,14 @@ export default function AfrawoodLanding({ onNavigate }) {
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <span className={CHIP}>{creditSummary.plan?.name || "Free"}</span>
             <span className={CHIP}>
-              {t("pricing.currentCredits", "Current credits:")} {creditSummary.creditsRemaining}
+              {t("pricing.currentCredits", "Current credits:")}{" "}
+              {creditSummary.creditsRemaining}
             </span>
             <span className={CHIP}>
               {t("pricing.watermark", "Watermark:")}{" "}
-              {creditSummary.watermark ? t("pricing.on", "On") : t("pricing.off", "Off")}
+              {creditSummary.watermark
+                ? t("pricing.on", "On")
+                : t("pricing.off", "Off")}
             </span>
           </div>
 
@@ -276,8 +323,8 @@ export default function AfrawoodLanding({ onNavigate }) {
             ref={videoRef}
             src={welcomeVideo}
             autoPlay
+            muted
             controls={false}
-            muted={false}
             playsInline
             preload="auto"
             loop={false}
@@ -297,11 +344,16 @@ export default function AfrawoodLanding({ onNavigate }) {
             <div className="flex flex-wrap gap-2">
               <span className={CHIP}>Afrawood</span>
               <span className={CHIP}>{t("landing.support", "Support")}</span>
-              <span className={CHIP}>{t("landing.partnership", "Partnership")}</span>
+              <span className={CHIP}>
+                {t("landing.partnership", "Partnership")}
+              </span>
             </div>
 
             <p className={MODAL_TEXT}>
-              {t("landing.contactIntro", "Users can contact Afrawood through this email:")}
+              {t(
+                "landing.contactIntro",
+                "Users can contact Afrawood through this email:"
+              )}
             </p>
 
             <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
@@ -320,9 +372,15 @@ export default function AfrawoodLanding({ onNavigate }) {
         >
           <div className="space-y-6">
             <div className="flex flex-wrap gap-2">
-              <span className={CHIP}>{t("landing.aiFilmStudio", "AI Film Studio")}</span>
-              <span className={CHIP}>{t("landing.creatorEconomy", "Creator Economy")}</span>
-              <span className={CHIP}>{t("landing.revenueTools", "Revenue Tools")}</span>
+              <span className={CHIP}>
+                {t("landing.aiFilmStudio", "AI Film Studio")}
+              </span>
+              <span className={CHIP}>
+                {t("landing.creatorEconomy", "Creator Economy")}
+              </span>
+              <span className={CHIP}>
+                {t("landing.revenueTools", "Revenue Tools")}
+              </span>
             </div>
 
             <div>
@@ -338,20 +396,48 @@ export default function AfrawoodLanding({ onNavigate }) {
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="mb-2 font-semibold text-white">{t("modules.script", "AI Script")}</div>
-                  <div className={MODAL_TEXT}>{t("landing.how2Text", "Build text, images, video, voice, and music.")}</div>
+                  <div className="mb-2 font-semibold text-white">
+                    {t("modules.script", "AI Script")}
+                  </div>
+                  <div className={MODAL_TEXT}>
+                    {t(
+                      "landing.how2Text",
+                      "Build text, images, video, voice, and music."
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="mb-2 font-semibold text-white">{t("modules.image", "Cinematic Image")}</div>
-                  <div className={MODAL_TEXT}>{t("landing.how2Text", "Build text, images, video, voice, and music.")}</div>
+                  <div className="mb-2 font-semibold text-white">
+                    {t("modules.image", "Cinematic Image")}
+                  </div>
+                  <div className={MODAL_TEXT}>
+                    {t(
+                      "landing.how2Text",
+                      "Build text, images, video, voice, and music."
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="mb-2 font-semibold text-white">{t("modules.video", "Video Generator")}</div>
-                  <div className={MODAL_TEXT}>{t("landing.how2Text", "Build text, images, video, voice, and music.")}</div>
+                  <div className="mb-2 font-semibold text-white">
+                    {t("modules.video", "Video Generator")}
+                  </div>
+                  <div className={MODAL_TEXT}>
+                    {t(
+                      "landing.how2Text",
+                      "Build text, images, video, voice, and music."
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="mb-2 font-semibold text-white">{t("modules.voice", "Voice Generator")}</div>
-                  <div className={MODAL_TEXT}>{t("landing.how2Text", "Build text, images, video, voice, and music.")}</div>
+                  <div className="mb-2 font-semibold text-white">
+                    {t("modules.voice", "Voice Generator")}
+                  </div>
+                  <div className={MODAL_TEXT}>
+                    {t(
+                      "landing.how2Text",
+                      "Build text, images, video, voice, and music."
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -362,19 +448,27 @@ export default function AfrawoodLanding({ onNavigate }) {
               </div>
               <div className="space-y-3">
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="font-semibold text-white">{t("landing.how1Title")}</div>
+                  <div className="font-semibold text-white">
+                    {t("landing.how1Title")}
+                  </div>
                   <div className={MODAL_TEXT}>{t("landing.how1Text")}</div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="font-semibold text-white">{t("landing.how2Title")}</div>
+                  <div className="font-semibold text-white">
+                    {t("landing.how2Title")}
+                  </div>
                   <div className={MODAL_TEXT}>{t("landing.how2Text")}</div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="font-semibold text-white">{t("landing.how3Title")}</div>
+                  <div className="font-semibold text-white">
+                    {t("landing.how3Title")}
+                  </div>
                   <div className={MODAL_TEXT}>{t("landing.how3Text")}</div>
                 </div>
                 <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                  <div className="font-semibold text-white">{t("landing.how4Title")}</div>
+                  <div className="font-semibold text-white">
+                    {t("landing.how4Title")}
+                  </div>
                   <div className={MODAL_TEXT}>{t("landing.how4Text")}</div>
                 </div>
               </div>
