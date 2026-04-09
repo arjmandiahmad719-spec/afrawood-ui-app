@@ -1,0 +1,684 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useAfraFlow } from "../../core/AfraFlowContext";
+import { runCopilotDirectorCommand } from "../../core/CopilotEngine";
+
+const shellStyle = {
+  display: "grid",
+  gap: 16,
+  padding: 20,
+  borderRadius: 24,
+  background:
+    "linear-gradient(180deg, rgba(10,12,18,0.98) 0%, rgba(14,18,28,0.98) 100%)",
+  border: "1px solid rgba(87,221,210,0.14)",
+  color: "#f5f7fb",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+  minWidth: 0,
+  overflow: "hidden",
+};
+
+const titleStyle = {
+  fontSize: 22,
+  fontWeight: 900,
+};
+
+const subStyle = {
+  fontSize: 13,
+  lineHeight: 1.9,
+  color: "rgba(255,255,255,0.7)",
+};
+
+const contextRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+};
+
+const contextCardStyle = {
+  display: "grid",
+  gap: 8,
+  padding: 12,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.035)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  minWidth: 0,
+};
+
+const contextLabelStyle = {
+  fontSize: 11,
+  fontWeight: 800,
+  color: "rgba(255,255,255,0.58)",
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+};
+
+const contextValueStyle = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#eafcff",
+  minWidth: 0,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+  whiteSpace: "normal",
+  lineHeight: 1.8,
+};
+
+const cardStyle = {
+  display: "grid",
+  gap: 12,
+  padding: 16,
+  borderRadius: 20,
+  background: "rgba(255,255,255,0.035)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  minWidth: 0,
+};
+
+const sectionTitleStyle = {
+  fontSize: 16,
+  fontWeight: 800,
+};
+
+const labelStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "rgba(255,255,255,0.72)",
+};
+
+const inputStyle = {
+  width: "100%",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(3,5,10,0.62)",
+  color: "#f8fbff",
+  padding: "12px 14px",
+  fontSize: 14,
+  outline: "none",
+  minWidth: 0,
+};
+
+const textareaStyle = {
+  ...inputStyle,
+  minHeight: 110,
+  resize: "vertical",
+  lineHeight: 1.9,
+};
+
+const row2Style = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+};
+
+const row3Style = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+};
+
+const buttonRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+};
+
+const primaryButtonStyle = {
+  border: "none",
+  borderRadius: 14,
+  padding: "12px 16px",
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: "pointer",
+  background: "linear-gradient(135deg, #f5c66d 0%, #57ddd2 100%)",
+  color: "#071018",
+};
+
+const secondaryButtonStyle = {
+  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 14,
+  padding: "12px 16px",
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.04)",
+  color: "#f5f7fb",
+};
+
+const chipWrapStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const chipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "7px 11px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#dffcf7",
+  background: "rgba(87,221,210,0.1)",
+  border: "1px solid rgba(87,221,210,0.16)",
+  maxWidth: "100%",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const modeChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#fff2cf",
+  background: "rgba(245,198,109,0.1)",
+  border: "1px solid rgba(245,198,109,0.18)",
+  maxWidth: "100%",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const outputStyle = {
+  minHeight: 120,
+  padding: 16,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(0,0,0,0.22)",
+  whiteSpace: "pre-wrap",
+  lineHeight: 1.9,
+  fontSize: 14,
+  color: "#eef8ff",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const listStyle = {
+  display: "grid",
+  gap: 10,
+};
+
+const itemStyle = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(255,255,255,0.03)",
+  border: "1px solid rgba(255,255,255,0.07)",
+  minWidth: 0,
+};
+
+const itemTitleStyle = {
+  fontSize: 14,
+  fontWeight: 800,
+  marginBottom: 6,
+  overflowWrap: "anywhere",
+};
+
+const itemSubStyle = {
+  fontSize: 12,
+  color: "rgba(255,255,255,0.72)",
+  lineHeight: 1.8,
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const emptyStyle = {
+  padding: 16,
+  borderRadius: 16,
+  border: "1px dashed rgba(255,255,255,0.12)",
+  color: "rgba(255,255,255,0.68)",
+  background: "rgba(255,255,255,0.02)",
+};
+
+const noteBoxStyle = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(87,221,210,0.08)",
+  border: "1px solid rgba(87,221,210,0.14)",
+  color: "#dffcf7",
+  fontSize: 12,
+  lineHeight: 1.85,
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
+};
+
+const dividerStyle = {
+  width: "100%",
+  height: 1,
+  background:
+    "linear-gradient(90deg, rgba(255,255,255,0.03), rgba(87,221,210,0.2), rgba(255,255,255,0.03))",
+};
+
+const normalizeText = (value) => String(value || "").trim();
+
+const detectDraftMode = (draftText, lastIntentResult) => {
+  if (lastIntentResult?.noDialogue) return "no-dialogue";
+  if (lastIntentResult?.minimalDialogue) return "minimal-dialogue";
+  if (!normalizeText(draftText)) return "empty";
+  if (draftText.includes("[بدون دیالوگ]")) return "no-dialogue";
+  return "full-dialogue";
+};
+
+const modeLabels = {
+  empty: "بدون خروجی",
+  "full-dialogue": "دیالوگ کامل",
+  "minimal-dialogue": "کم‌دیالوگ",
+  "no-dialogue": "بدون دیالوگ",
+};
+
+function ContextCard({ label, value }) {
+  return (
+    <div style={contextCardStyle}>
+      <div style={contextLabelStyle}>{label}</div>
+      <div style={contextValueStyle}>{value || "ندارد"}</div>
+    </div>
+  );
+}
+
+export default function DialogBuilderPanel() {
+  const { state, actions } = useAfraFlow();
+
+  const activeScene =
+    state?.indexes?.sceneMap?.[state?.ui?.activeSceneId] || null;
+
+  const [form, setForm] = useState({
+    sceneTitle: "",
+    characters: "",
+    tone: "",
+    tension: "",
+    intention: "",
+    emotion: "",
+    count: "8",
+    extraPrompt: "",
+  });
+
+  const dialogueLines = useMemo(() => {
+    if (!activeScene?.id) return [];
+    return (state?.entities?.dialogues || [])
+      .filter((item) => item.sceneId === activeScene.id)
+      .sort((a, b) => a.order - b.order);
+  }, [state?.entities?.dialogues, activeScene]);
+
+  const dialogueDraft = state?.outputs?.generatedDialogueDraft || "";
+  const directorNotes = state?.outputs?.directorNotes || "";
+  const memorySummary = state?.memory?.conversationSummary || "";
+  const lastIntentResult = state?.outputs?.lastIntentResult || null;
+  const outputMode = detectDraftMode(dialogueDraft, lastIntentResult);
+
+  const characterNames = useMemo(() => {
+    if (!activeScene?.characterIds?.length) return [];
+    return activeScene.characterIds
+      .map((id) => state?.indexes?.characterMap?.[id]?.name)
+      .filter(Boolean);
+  }, [activeScene, state?.indexes?.characterMap]);
+
+  useEffect(() => {
+    if (!activeScene) return;
+    setForm((prev) => ({
+      ...prev,
+      sceneTitle: activeScene?.title || "",
+      characters: characterNames.join("، "),
+      tone: activeScene?.mood || "",
+      tension: activeScene?.conflict || "",
+      intention: activeScene?.purpose || "",
+    }));
+  }, [
+    activeScene?.id,
+    activeScene?.title,
+    activeScene?.mood,
+    activeScene?.conflict,
+    activeScene?.purpose,
+    characterNames.join("، "),
+  ]);
+
+  const runGenerateDialogue = async () => {
+    if (!activeScene?.title && !form.sceneTitle) {
+      actions.appendChatMessage?.({
+        role: "assistant",
+        text: "اول یک صحنه فعال انتخاب یا ایجاد کن.",
+        type: "assistant",
+        meta: { intent: "generate_dialogue", command: "dialog-builder" },
+      });
+      return;
+    }
+
+    const prompt = [
+      "برای همین صحنه دیالوگ حرفه‌ای بساز",
+      `صحنه: ${normalizeText(form.sceneTitle || activeScene?.title)}`,
+      normalizeText(form.characters)
+        ? `شخصیت‌ها: ${normalizeText(form.characters)}`
+        : "",
+      normalizeText(form.tone) ? `لحن: ${normalizeText(form.tone)}` : "",
+      normalizeText(form.tension) ? `تنش: ${normalizeText(form.tension)}` : "",
+      normalizeText(form.intention)
+        ? `هدف دیالوگ: ${normalizeText(form.intention)}`
+        : "",
+      normalizeText(form.emotion) ? `احساس: ${normalizeText(form.emotion)}` : "",
+      normalizeText(form.count) ? `تعداد دیالوگ: ${normalizeText(form.count)}` : "",
+      normalizeText(form.extraPrompt)
+        ? `یادداشت: ${normalizeText(form.extraPrompt)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await runCopilotDirectorCommand({
+        input: prompt,
+        state,
+        actions,
+      });
+    } catch (error) {
+      actions.setError?.(error?.message || "خطا در ساخت دیالوگ");
+    }
+  };
+
+  const runMinimalDialogue = async () => {
+    if (!activeScene?.title && !form.sceneTitle) return;
+
+    const prompt = [
+      "برای همین صحنه دیالوگ بساز",
+      `صحنه: ${normalizeText(form.sceneTitle || activeScene?.title)}`,
+      normalizeText(form.characters)
+        ? `شخصیت‌ها: ${normalizeText(form.characters)}`
+        : "",
+      `یادداشت: این صحنه کم‌دیالوگ باشد و فقط دو جمله کوتاه و سنگین داشته باشد. ${normalizeText(form.extraPrompt)}`.trim(),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await runCopilotDirectorCommand({
+        input: prompt,
+        state,
+        actions,
+      });
+    } catch (error) {
+      actions.setError?.(error?.message || "خطا در ساخت خروجی کم‌دیالوگ");
+    }
+  };
+
+  const runSilentBeat = async () => {
+    if (!activeScene?.title && !form.sceneTitle) return;
+
+    const prompt = [
+      "برای همین صحنه دیالوگ بساز",
+      `صحنه: ${normalizeText(form.sceneTitle || activeScene?.title)}`,
+      normalizeText(form.characters)
+        ? `شخصیت‌ها: ${normalizeText(form.characters)}`
+        : "",
+      `یادداشت: این لحظه بدون دیالوگ باشد و فقط با سکوت، نگاه و میزانسن پیش برود. ${normalizeText(form.extraPrompt)}`.trim(),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await runCopilotDirectorCommand({
+        input: prompt,
+        state,
+        actions,
+      });
+    } catch (error) {
+      actions.setError?.(error?.message || "خطا در ساخت خروجی بدون دیالوگ");
+    }
+  };
+
+  const runDirectorNote = async () => {
+    try {
+      await runCopilotDirectorCommand({
+        input: "برای همین صحنه فعال نوت کارگردانی بده",
+        state,
+        actions,
+      });
+    } catch (error) {
+      actions.setError?.(error?.message || "خطا در ساخت نوت کارگردانی");
+    }
+  };
+
+  const fillFromMemory = () => {
+    const refScene =
+      state?.indexes?.sceneMap?.[state?.memory?.references?.lastSceneId] || activeScene;
+
+    if (!refScene) return;
+
+    const names = (refScene.characterIds || [])
+      .map((id) => state?.indexes?.characterMap?.[id]?.name)
+      .filter(Boolean)
+      .join("، ");
+
+    setForm((prev) => ({
+      ...prev,
+      sceneTitle: refScene.title || "",
+      characters: names,
+      tone: refScene.mood || "",
+      tension: refScene.conflict || "",
+      intention: refScene.purpose || "",
+    }));
+  };
+
+  const modeDescription =
+    outputMode === "full-dialogue"
+      ? "این خروجی برای صحنه، دیالوگ کامل تولید کرده است."
+      : outputMode === "minimal-dialogue"
+      ? "این خروجی برای صحنه، فقط چند جمله کوتاه و سنگین نگه داشته است."
+      : outputMode === "no-dialogue"
+      ? "این خروجی تشخیص داده که لحظه باید با سکوت، کنش و میزانسن پیش برود."
+      : "هنوز خروجی‌ای برای این صحنه ساخته نشده.";
+
+  return (
+    <section style={shellStyle}>
+      <style>{`
+        @media (min-width: 860px) {
+          .afra-dialog-row-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .afra-dialog-row-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .afra-dialog-context {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        }
+      `}</style>
+
+      <div style={titleStyle}>Dialog Builder</div>
+      <div style={subStyle}>
+        این پنل به حافظه مکالمه و صحنه فعال وصل است و می‌تواند برای یک صحنه،
+        دیالوگ کامل، کم‌دیالوگ یا حتی خروجی بدون دیالوگ تولید کند.
+      </div>
+
+      <div className="afra-dialog-context" style={contextRowStyle}>
+        <ContextCard label="Scene" value={activeScene?.title} />
+        <ContextCard label="Location" value={activeScene?.location} />
+        <ContextCard label="Time" value={activeScene?.timeOfDay} />
+      </div>
+
+      <div style={noteBoxStyle}>
+        {memorySummary || "حافظه گفتگو هنوز خلاصه‌ای ندارد."}
+      </div>
+
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>تنظیمات صحنه و خروجی</div>
+
+        <div style={chipWrapStyle}>
+          <span style={chipStyle}>
+            شخصیت‌ها: {characterNames.length ? characterNames.join("، ") : "ندارد"}
+          </span>
+          {activeScene?.mood ? <span style={chipStyle}>{activeScene.mood}</span> : null}
+          {activeScene?.genre ? <span style={chipStyle}>{activeScene.genre}</span> : null}
+          <span style={modeChipStyle}>{modeLabels[outputMode]}</span>
+        </div>
+
+        <div style={dividerStyle} />
+
+        <div style={labelStyle}>عنوان صحنه</div>
+        <input
+          style={inputStyle}
+          value={form.sceneTitle}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, sceneTitle: e.target.value }))
+          }
+        />
+
+        <div style={labelStyle}>شخصیت‌ها</div>
+        <input
+          style={inputStyle}
+          value={form.characters}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, characters: e.target.value }))
+          }
+          placeholder="مثال: آرمان، سارا"
+        />
+
+        <div className="afra-dialog-row-3" style={row3Style}>
+          <div>
+            <div style={labelStyle}>لحن</div>
+            <input
+              style={inputStyle}
+              value={form.tone}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, tone: e.target.value }))
+              }
+            />
+          </div>
+
+          <div>
+            <div style={labelStyle}>تنش</div>
+            <input
+              style={inputStyle}
+              value={form.tension}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, tension: e.target.value }))
+              }
+            />
+          </div>
+
+          <div>
+            <div style={labelStyle}>احساس</div>
+            <input
+              style={inputStyle}
+              value={form.emotion}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, emotion: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+
+        <div className="afra-dialog-row-2" style={row2Style}>
+          <div>
+            <div style={labelStyle}>هدف دیالوگ / صحنه</div>
+            <input
+              style={inputStyle}
+              value={form.intention}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, intention: e.target.value }))
+              }
+            />
+          </div>
+
+          <div>
+            <div style={labelStyle}>تعداد</div>
+            <input
+              style={inputStyle}
+              value={form.count}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, count: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+
+        <div>
+          <div style={labelStyle}>یادداشت تکمیلی</div>
+          <textarea
+            style={textareaStyle}
+            value={form.extraPrompt}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, extraPrompt: e.target.value }))
+            }
+            placeholder="مثال: دیالوگ‌ها طبیعی، کوتاه و محاوره‌ای باشند / یا این لحظه کم‌دیالوگ باشد"
+          />
+        </div>
+
+        <div style={buttonRowStyle}>
+          <button type="button" style={primaryButtonStyle} onClick={runGenerateDialogue}>
+            دیالوگ کامل
+          </button>
+
+          <button type="button" style={secondaryButtonStyle} onClick={runMinimalDialogue}>
+            کم‌دیالوگ
+          </button>
+
+          <button type="button" style={secondaryButtonStyle} onClick={runSilentBeat}>
+            بدون دیالوگ
+          </button>
+
+          <button type="button" style={secondaryButtonStyle} onClick={runDirectorNote}>
+            نوت کارگردانی
+          </button>
+
+          <button type="button" style={secondaryButtonStyle} onClick={fillFromMemory}>
+            پرکردن از حافظه
+          </button>
+        </div>
+
+        <div>
+          <div style={labelStyle}>توضیح وضعیت خروجی</div>
+          <div style={outputStyle}>{modeDescription}</div>
+        </div>
+
+        <div>
+          <div style={labelStyle}>خروجی متنی</div>
+          <div style={outputStyle}>
+            {dialogueDraft || "هنوز برای این صحنه خروجی‌ای ساخته نشده."}
+          </div>
+        </div>
+
+        {normalizeText(directorNotes) ? (
+          <div>
+            <div style={labelStyle}>Director Notes</div>
+            <div style={outputStyle}>{directorNotes}</div>
+          </div>
+        ) : null}
+      </div>
+
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>خطوط خروجی صحنه فعال</div>
+
+        {dialogueLines.length ? (
+          <div style={listStyle}>
+            {dialogueLines.map((line) => (
+              <div key={line.id} style={itemStyle}>
+                <div style={itemTitleStyle}>
+                  {line.characterName || "شخصیت"}
+                </div>
+
+                <div style={itemSubStyle}>{line.text}</div>
+
+                <div style={{ ...itemSubStyle, marginTop: 8 }}>
+                  {[
+                    line.beat ? `بیت: ${line.beat}` : "",
+                    line.emotion ? `احساس: ${line.emotion}` : "",
+                    line.intention ? `هدف: ${line.intention}` : "",
+                    line.metadata?.minimalDialogue ? "کم‌دیالوگ" : "",
+                    line.metadata?.noDialogue ? "بدون دیالوگ" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" | ")}
+                </div>
+
+                {line.subtext ? (
+                  <div style={{ ...itemSubStyle, marginTop: 8 }}>
+                    زیرمتن: {line.subtext}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={emptyStyle}>برای این صحنه هنوز خروجی ثبت نشده.</div>
+        )}
+      </div>
+    </section>
+  );
+}
