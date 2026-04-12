@@ -1,184 +1,368 @@
-function safeText(value, fallback = "") {
-  if (typeof value !== "string") return fallback;
-  return value.trim();
+const RUNWAY_API_KEY = import.meta.env.VITE_RUNWAY_API_KEY;
+const RUNWAY_API_BASE = "https://api.dev.runwayml.com/v1";
+const RUNWAY_API_VERSION = "2024-11-06";
+const DEFAULT_MODEL = "gen4.5";
+const VIDEO_HISTORY_STORAGE_KEY = "afrawood_video_history";
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function safeNumber(value, fallback = 0) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
-function normalizeImageSource(image) {
-  if (!image) return null;
-
-  return {
-    id: image.id || "image_source_1",
-    name: safeText(image.name, "reference_image"),
-    type: safeText(image.type),
-    size: safeNumber(image.size, 0),
-    kind: image.kind || "image",
-  };
-}
-
-function inferAspectResolution(aspectRatio, quality) {
-  const ratio = safeText(aspectRatio, "16:9");
-  const q = safeText(quality, "high");
-
-  if (ratio === "9:16") {
-    if (q === "ultra") return { width: 1440, height: 2560 };
-    if (q === "high") return { width: 1080, height: 1920 };
-    return { width: 720, height: 1280 };
+function getHeaders() {
+  if (!RUNWAY_API_KEY) {
+    throw new Error("Missing Runway API Key");
   }
 
-  if (ratio === "1:1") {
-    if (q === "ultra") return { width: 1440, height: 1440 };
-    if (q === "high") return { width: 1080, height: 1080 };
-    return { width: 768, height: 768 };
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${RUNWAY_API_KEY}`,
+    "X-Runway-Version": RUNWAY_API_VERSION,
+  };
+}
+
+function normalizeRatio(ratio = "1280:720") {
+  const allowed = new Set([
+    "1280:720",
+    "720:1280",
+    "1024:1024",
+    "1104:832",
+    "832:1104",
+    "1584:672",
+  ]);
+
+  return allowed.has(ratio) ? ratio : "1280:720";
+}
+
+function normalizeDuration(duration = 5) {
+  const value = Number(duration);
+  if (!Number.isFinite(value)) return 5;
+  return Math.min(10, Math.max(2, Math.round(value)));
+}
+
+function normalizePromptText(promptText = "") {
+  return String(promptText || "").trim();
+}
+
+function fileToDataUri(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      if (!result.startsWith("data:")) {
+        reject(new Error("Invalid image data"));
+        return;
+      }
+      resolve(result);
+    };
+
+    reader.onerror = () => reject(new Error("Failed to read image file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function imageUrlToDataUri(url) {
+  if (!url) return "";
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error("Failed to load image URL");
   }
 
-  if (q === "ultra") return { width: 2560, height: 1440 };
-  if (q === "high") return { width: 1920, height: 1080 };
-  return { width: 1280, height: 720 };
+  const blob = await res.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      if (!result.startsWith("data:")) {
+        reject(new Error("Failed to convert image URL to data URI"));
+        return;
+      }
+      resolve(result);
+    };
+
+    reader.onerror = () => reject(new Error("Failed to convert image blob"));
+    reader.readAsDataURL(blob);
+  });
 }
 
-function detectGenerationMode(input = {}) {
-  const hasPrompt = Boolean(safeText(input.prompt));
-  const hasImage = Boolean(input.referenceImage);
+async function resolvePromptImage({ imageFile = null, imageUrl = "" } = {}) {
+  if (imageFile) {
+    return await fileToDataUri(imageFile);
+  }
 
-  if (hasPrompt && hasImage) return "image_plus_prompt_to_video";
-  if (hasImage) return "image_to_video";
-  return "text_to_video";
+  if (imageUrl) {
+    return await imageUrlToDataUri(imageUrl);
+  }
+
+  return "";
 }
 
-function buildProviderConfig(input = {}) {
-  const provider = safeText(input.provider, "hybrid_ready");
-  const mode =
-    provider === "api_later"
-      ? "remote_api"
-      : provider === "local_later"
-        ? "local_engine"
-        : "hybrid_mock";
+function mapTaskError(task) {
+  const reason =
+    task?.failure ||
+    task?.error ||
+    task?.message ||
+    "Video generation failed";
 
+  return String(reason);
+}
+
+export function getVideoHistory() {
+  if (typeof window === "undefined") return [];
+  return safeJsonParse(window.localStorage.getItem(VIDEO_HISTORY_STORAGE_KEY), []);
+}
+
+export function saveVideoHistoryItem(item) {
+  if (typeof window === "undefined") return;
+
+  const current = getVideoHistory();
+  const next = [item, ...current].slice(0, 30);
+  window.localStorage.setItem(VIDEO_HISTORY_STORAGE_KEY, JSON.stringify(next));
+}
+
+export function removeVideoHistoryItem(id) {
+  if (typeof window === "undefined") return;
+
+  const current = getVideoHistory();
+  const next = current.filter((item) => item.id !== id);
+  window.localStorage.setItem(VIDEO_HISTORY_STORAGE_KEY, JSON.stringify(next));
+}
+
+export function clearVideoHistory() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(VIDEO_HISTORY_STORAGE_KEY);
+}
+
+export async function getVideoEngineInfo() {
   return {
-    provider,
-    mode,
-    connected: false,
-    localReady: true,
-    apiReady: true,
+    name: "Runway API",
+    model: DEFAULT_MODEL,
+    endpoint: `${RUNWAY_API_BASE}/image_to_video`,
+    version: RUNWAY_API_VERSION,
   };
 }
 
-function buildMotionConfig(input = {}) {
-  return {
-    motionStrength: safeNumber(input.motionStrength, 0.7),
-    cameraMovement: safeText(input.cameraMovement, "subtle"),
-    shotStyle: safeText(input.shotStyle, "cinematic"),
-    loopable: Boolean(input.loopable),
-    stabilizeFaces: Boolean(input.stabilizeFaces),
-  };
+export async function checkVideoEngineHealth() {
+  try {
+    getHeaders();
+
+    return {
+      ok: true,
+      status: "ready",
+      message: "Runway API key is configured",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "not_configured",
+      message: error?.message || "Runway API is not configured",
+    };
+  }
 }
 
-function buildOutputConfig(input = {}) {
-  const aspectRatio = safeText(input.aspectRatio, "16:9");
-  const quality = safeText(input.quality, "high");
-  const size = inferAspectResolution(aspectRatio, quality);
+export async function createVideoTask({
+  promptText,
+  ratio = "1280:720",
+  duration = 5,
+  imageFile = null,
+  imageUrl = "",
+  model = DEFAULT_MODEL,
+} = {}) {
+  const cleanPrompt = normalizePromptText(promptText);
 
-  return {
-    durationSec: safeNumber(input.durationSec, 5),
-    fps: safeNumber(input.fps, 24),
-    aspectRatio,
-    quality,
-    width: size.width,
-    height: size.height,
-    format: safeText(input.format, "mp4"),
+  if (!cleanPrompt) {
+    throw new Error("Prompt is required");
+  }
+
+  const payload = {
+    model,
+    promptText: cleanPrompt,
+    ratio: normalizeRatio(ratio),
+    duration: normalizeDuration(duration),
   };
-}
 
-export function buildVideoPayload(input = {}) {
-  const prompt = safeText(input.prompt);
-  const negativePrompt = safeText(input.negativePrompt);
-  const title = safeText(input.projectTitle, "Untitled Video Project");
-  const provider = buildProviderConfig(input);
-  const referenceImage = normalizeImageSource(input.referenceImage);
-  const output = buildOutputConfig(input);
-  const motion = buildMotionConfig(input);
-  const generationMode = detectGenerationMode({
-    prompt,
-    referenceImage,
+  const promptImage = await resolvePromptImage({ imageFile, imageUrl });
+  if (promptImage) {
+    payload.promptImage = promptImage;
+  }
+
+  const res = await fetch(`${RUNWAY_API_BASE}/image_to_video`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
   });
 
-  return {
-    app: "Afrawood",
-    feature: "video",
-    version: 1,
-    createdAt: new Date().toISOString(),
+  if (!res.ok) {
+    let message = "Runway request failed";
+    try {
+      const data = await res.json();
+      message = data?.error || data?.message || message;
+    } catch {
+      const text = await res.text();
+      message = text || message;
+    }
+    throw new Error(message);
+  }
 
-    project: {
-      title,
-    },
+  const data = await res.json();
 
-    input: {
-      prompt,
-      negativePrompt,
-      generationMode,
-      referenceImage,
-    },
+  if (!data?.id) {
+    throw new Error("Runway did not return a task id");
+  }
 
-    provider,
-    motion,
-    output,
-
-    render: {
-      backendRequired: true,
-      providerConnected: false,
-      mockPreviewSupported: true,
-      realVideoReady: false,
-      reason:
-        "Video payload is ready. Real render should be connected later to local engine or API provider.",
-    },
-
-    exportHint: {
-      recommendedNextPage: "export",
-      mergeReady: true,
-      exportReady: true,
-    },
-
-    notes: {
-      status:
-        "Video payload آماده است. معماری hybrid local + API حفظ شده و اتصال واقعی بعداً کامل می‌شود.",
-    },
-  };
+  return data.id;
 }
 
-export function getVideoEngineInfo() {
-  return {
-    engine: "Afrawood Video",
-    mode: "hybrid",
-    supportsTextToVideo: true,
-    supportsImageToVideo: true,
-    supportsPromptPlusImage: true,
-    supportsMockPreview: true,
-  };
+export async function getVideoTask(taskId) {
+  if (!taskId) {
+    throw new Error("Task id is required");
+  }
+
+  const res = await fetch(`${RUNWAY_API_BASE}/tasks/${taskId}`, {
+    method: "GET",
+    headers: getHeaders(),
+  });
+
+  if (!res.ok) {
+    let message = "Failed to fetch task";
+    try {
+      const data = await res.json();
+      message = data?.error || data?.message || message;
+    } catch {
+      const text = await res.text();
+      message = text || message;
+    }
+    throw new Error(message);
+  }
+
+  return await res.json();
 }
 
-export async function generateMockVideoPreview(payload = {}) {
-  const output = payload.output || {};
+export async function waitForVideoTask(taskId, options = {}) {
+  const {
+    timeoutMs = 10 * 60 * 1000,
+    pollIntervalMs = 4000,
+  } = options;
+
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const task = await getVideoTask(taskId);
+    const status = String(task?.status || "").toUpperCase();
+
+    if (status === "SUCCEEDED") {
+      return task;
+    }
+
+    if (status === "FAILED" || status === "CANCELLED") {
+      throw new Error(mapTaskError(task));
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error("Video generation timed out");
+}
+
+export async function generateVideo({
+  promptText,
+  ratio = "1280:720",
+  duration = 5,
+  imageFile = null,
+  imageUrl = "",
+  model = DEFAULT_MODEL,
+} = {}) {
+  const taskId = await createVideoTask({
+    promptText,
+    ratio,
+    duration,
+    imageFile,
+    imageUrl,
+    model,
+  });
+
+  const task = await waitForVideoTask(taskId);
+
+  const videoUrl = Array.isArray(task?.output) ? task.output[0] : "";
+
+  if (!videoUrl) {
+    throw new Error("No video URL returned from Runway");
+  }
+
+  const historyRecord = {
+    id: `${taskId}-${Date.now()}`,
+    taskId,
+    promptText: normalizePromptText(promptText),
+    ratio: normalizeRatio(ratio),
+    duration: normalizeDuration(duration),
+    model,
+    videoUrl,
+    createdAt: Date.now(),
+  };
+
+  saveVideoHistoryItem(historyRecord);
+
   return {
     ok: true,
-    posterUrl: "",
-    duration: output.durationSec || 5,
-    width: output.width || 1280,
-    height: output.height || 720,
-    fps: output.fps || 24,
+    taskId,
+    status: task.status,
+    videoUrl,
+    historyRecord,
+    rawTask: task,
   };
 }
 
-export async function prepareVideoPayload(input = {}) {
-  return buildVideoPayload(input);
+export async function downloadVideoFile(videoUrl, fileName = "afrawood-video.mp4") {
+  if (!videoUrl) {
+    throw new Error("Video URL is required");
+  }
+
+  const res = await fetch(videoUrl);
+  if (!res.ok) {
+    throw new Error("Failed to download video");
+  }
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(objectUrl);
 }
 
-export async function createVideoPayload(input = {}) {
-  return buildVideoPayload(input);
-}
+const videoAI = {
+  getVideoEngineInfo,
+  checkVideoEngineHealth,
+  createVideoTask,
+  getVideoTask,
+  waitForVideoTask,
+  generateVideo,
+  getVideoHistory,
+  saveVideoHistoryItem,
+  removeVideoHistoryItem,
+  clearVideoHistory,
+  downloadVideoFile,
+};
 
-export default buildVideoPayload;
+export default videoAI;

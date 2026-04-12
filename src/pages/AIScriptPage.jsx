@@ -1,227 +1,575 @@
 import React, { useMemo, useState } from "react";
-import { useLanguage } from "../i18n/LanguageContext.jsx";
 
-const PANEL =
-  "rounded-[30px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl shadow-[0_20px_80px_rgba(0,0,0,0.35)] md:p-6";
-const INPUT =
-  "w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20";
-const LABEL = "mb-2 block text-sm font-medium text-white/80";
-const PRIMARY_BUTTON =
-  "inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-400 to-amber-300 px-4 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] active:scale-[0.99]";
-const SECONDARY_BUTTON =
-  "inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-white/10";
-const CHIP =
-  "inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/80";
+const PAGE_STYLE = {
+  minHeight: "100vh",
+  backgroundImage: "url('/script-bg-bw.jpg')",
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+  backgroundRepeat: "no-repeat",
+  position: "relative",
+  color: "#fff",
+  overflow: "hidden",
+};
 
-function SectionTitle({ title, desc }) {
-  return (
-    <div className="mb-5">
-      <h2 className="text-lg font-semibold text-white">{title}</h2>
-      {desc ? <p className="mt-1 text-sm text-white/55">{desc}</p> : null}
-    </div>
-  );
+const OVERLAY_STYLE = {
+  position: "absolute",
+  inset: 0,
+  background: "linear-gradient(180deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.78) 100%)",
+};
+
+const WRAP_STYLE = {
+  position: "relative",
+  zIndex: 2,
+  width: "100%",
+  maxWidth: 1320,
+  margin: "0 auto",
+  padding: "110px 24px 40px",
+  boxSizing: "border-box",
+};
+
+const CARD_STYLE = {
+  borderRadius: 28,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(10,10,10,0.38)",
+  boxShadow: "0 20px 80px rgba(0,0,0,0.35)",
+  backdropFilter: "blur(10px)",
+  padding: 28,
+  boxSizing: "border-box",
+};
+
+const PANEL_STYLE = {
+  borderRadius: 22,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.24)",
+  padding: 18,
+  boxSizing: "border-box",
+};
+
+const BUTTON_STYLE = {
+  height: 52,
+  padding: "0 20px",
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#fff",
+  fontSize: 15,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const ACTIVE_BUTTON_STYLE = {
+  ...BUTTON_STYLE,
+  background: "linear-gradient(135deg, #1ed6ff 0%, #f3d35e 100%)",
+  color: "#111",
+  border: "none",
+};
+
+const INPUT_STYLE = {
+  width: "100%",
+  height: 56,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.28)",
+  color: "#fff",
+  outline: "none",
+  padding: "0 16px",
+  fontSize: 16,
+  boxSizing: "border-box",
+};
+
+const TEXTAREA_STYLE = {
+  width: "100%",
+  minHeight: 220,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.28)",
+  color: "#fff",
+  outline: "none",
+  padding: "16px",
+  fontSize: 16,
+  boxSizing: "border-box",
+  resize: "vertical",
+};
+
+const PRIMARY_BUTTON_STYLE = {
+  height: 54,
+  padding: "0 24px",
+  borderRadius: 16,
+  border: "none",
+  background: "linear-gradient(135deg, #1ed6ff 0%, #f3d35e 100%)",
+  color: "#111",
+  cursor: "pointer",
+  fontSize: 16,
+  fontWeight: 800,
+};
+
+const SECONDARY_BUTTON_STYLE = {
+  height: 48,
+  padding: "0 18px",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.04)",
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const FORMAT_OPTIONS = [
+  {
+    id: "short-film",
+    label: "فیلم کوتاه",
+    englishLabel: "Short Film",
+    durationPlaceholder: "مثلا 5 تا 20 دقیقه",
+  },
+  {
+    id: "feature-film",
+    label: "فیلم سینمایی",
+    englishLabel: "Feature Film",
+    durationPlaceholder: "مثلا 80 تا 120 دقیقه",
+  },
+  {
+    id: "series",
+    label: "سریال",
+    englishLabel: "Series",
+    durationPlaceholder: "مثلا 8 قسمت / هر قسمت 45 دقیقه",
+  },
+];
+
+function readHistory() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem("afrawood_script_history");
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
-function buildScript({ title, genre, tone, language, duration, topic, idea }) {
-  const cleanTitle = title || "Untitled Project";
-  const cleanIdea = idea || "A character faces a meaningful turning point.";
-  const cleanTopic = topic || "human transformation";
-
-  return `TITLE: ${cleanTitle}
-
-FORMAT
-- Genre: ${genre}
-- Tone: ${tone}
-- Language: ${language}
-- Duration: ${duration}
-- Topic: ${cleanTopic}
-
-LOGLINE
-${cleanIdea}
-
-STORY SUMMARY
-A focused cinematic story built around ${cleanTopic}. The protagonist enters a difficult situation, faces emotional pressure, and finds a new direction through action and consequence.
-
-SCENE 1
-The world is introduced with a strong visual hook. The protagonist is placed in a setting that reflects the conflict.
-
-SCENE 2
-The problem becomes clear. Stakes rise. The protagonist must make a choice.
-
-SCENE 3
-The emotional core deepens. Conflict becomes personal and harder to avoid.
-
-SCENE 4
-The protagonist takes decisive action. Consequences unfold quickly.
-
-SCENE 5
-A final beat resolves the dramatic question and leaves a memorable closing image.
-
-SAMPLE DIALOGUE
-PROTAGONIST:
-I thought I had more time.
-
-SECOND CHARACTER:
-You never had time. You only had a choice.
-
-PROTAGONIST:
-Then this is the moment.
-
-DIRECTOR NOTE
-Keep the pacing visually strong, emotionally direct, and production-friendly.`;
+function saveHistory(items) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("afrawood_script_history", JSON.stringify(items || []));
 }
 
-export default function AIScriptPage({ onBackHome }) {
-  const { t } = useLanguage();
-  const [title, setTitle] = useState("");
-  const [genre, setGenre] = useState("Drama");
-  const [tone, setTone] = useState("Cinematic");
-  const [language, setLanguage] = useState("English");
-  const [duration, setDuration] = useState("5 min");
-  const [topic, setTopic] = useState("");
+function buildTitle(format) {
+  if (format === "short-film") return "SHORT FILM";
+  if (format === "feature-film") return "FEATURE FILM";
+  if (format === "series") return "SERIES";
+  return "SCRIPT";
+}
+
+function buildScriptDraft({
+  format,
+  idea,
+  genre,
+  tone,
+  duration,
+  protagonist,
+  setting,
+  language,
+}) {
+  const title = buildTitle(format);
+  const safeIdea = String(idea || "").trim() || "Write your story idea here.";
+  const safeGenre = String(genre || "").trim() || "Drama";
+  const safeTone = String(tone || "").trim() || "Cinematic";
+  const safeDuration = String(duration || "").trim() || "-";
+  const safeProtagonist = String(protagonist || "").trim() || "Main Character";
+  const safeSetting = String(setting || "").trim() || "Film World";
+  const safeLanguage = String(language || "").trim() || "English";
+
+  return `${title}
+
+Language: ${safeLanguage}
+Genre: ${safeGenre}
+Tone: ${safeTone}
+Duration: ${safeDuration}
+
+Logline:
+${safeIdea}
+
+Main Character:
+- Name: ${safeProtagonist}
+- Goal:
+- Inner Conflict:
+- Outer Conflict:
+
+World / Setting:
+- Main Setting: ${safeSetting}
+- Visual Tone:
+- Emotional Atmosphere:
+- Central Theme:
+
+Story Structure:
+1. Opening Image
+2. Setup
+3. Inciting Incident
+4. Rising Conflict
+5. Midpoint
+6. Crisis
+7. Climax
+8. Resolution
+
+Scene 1
+INT./EXT. - LOCATION - TIME
+Action:
+Dialogue:
+
+Scene 2
+INT./EXT. - LOCATION - TIME
+Action:
+Dialogue:
+
+Scene 3
+INT./EXT. - LOCATION - TIME
+Action:
+Dialogue:
+
+Director Notes:
+- Strengthen conflict
+- Sharpen character motivation
+- Keep dialogue cinematic
+- Improve scene rhythm
+`;
+}
+
+export default function AIScriptPage() {
+  const [selectedFormat, setSelectedFormat] = useState("short-film");
   const [idea, setIdea] = useState("");
-  const [status, setStatus] = useState(t("common.ready", "Ready"));
-  const [script, setScript] = useState("");
+  const [genre, setGenre] = useState("");
+  const [tone, setTone] = useState("");
+  const [duration, setDuration] = useState("");
+  const [protagonist, setProtagonist] = useState("");
+  const [setting, setSetting] = useState("");
+  const [language, setLanguage] = useState("English");
+  const [result, setResult] = useState("");
+  const [history, setHistory] = useState(() => readHistory());
 
-  const stats = useMemo(() => {
-    const words = script.trim() ? script.trim().split(/\s+/).length : 0;
-    return { words };
-  }, [script]);
+  const currentFormat = useMemo(() => {
+    return FORMAT_OPTIONS.find((item) => item.id === selectedFormat) || FORMAT_OPTIONS[0];
+  }, [selectedFormat]);
 
-  function generateScript() {
-    const result = buildScript({ title, genre, tone, language, duration, topic, idea });
-    setScript(result);
-    setStatus(t("script.generated", "Script generated."));
+  const wordCount = useMemo(() => {
+    return String(idea || "").trim().split(/\s+/).filter(Boolean).length;
+  }, [idea]);
+
+  function handleGenerate() {
+    const generated = buildScriptDraft({
+      format: selectedFormat,
+      idea,
+      genre,
+      tone,
+      duration,
+      protagonist,
+      setting,
+      language,
+    });
+
+    setResult(generated);
+
+    const entry = {
+      id: Date.now(),
+      format: selectedFormat,
+      title: buildTitle(selectedFormat),
+      idea: idea || "Untitled Idea",
+      genre: genre || "Drama",
+      tone: tone || "Cinematic",
+      duration: duration || "-",
+      protagonist: protagonist || "Main Character",
+      setting: setting || "Film World",
+      language: language || "English",
+      result: generated,
+    };
+
+    const nextHistory = [entry, ...history].slice(0, 12);
+    setHistory(nextHistory);
+    saveHistory(nextHistory);
   }
 
-  function downloadScript() {
-    if (!script.trim()) return;
-    const blob = new Blob([script], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(title || "afrawood_script").replace(/[^\w\-]+/g, "_")}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  function handleReset() {
+    setSelectedFormat("short-film");
+    setIdea("");
+    setGenre("");
+    setTone("");
+    setDuration("");
+    setProtagonist("");
+    setSetting("");
+    setLanguage("English");
+    setResult("");
+  }
+
+  function handleSelectHistory(item) {
+    setSelectedFormat(item.format || "short-film");
+    setIdea(item.idea || "");
+    setGenre(item.genre || "");
+    setTone(item.tone || "");
+    setDuration(item.duration || "");
+    setProtagonist(item.protagonist || "");
+    setSetting(item.setting || "");
+    setLanguage(item.language || "English");
+    setResult(item.result || "");
+  }
+
+  function handleDeleteHistory(id) {
+    const nextHistory = history.filter((item) => item.id !== id);
+    setHistory(nextHistory);
+    saveHistory(nextHistory);
+  }
+
+  function handleClearHistory() {
+    setHistory([]);
+    saveHistory([]);
   }
 
   return (
-    <div className="min-h-[calc(100vh-110px)] text-white">
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className={PANEL}>
-          <div className="mb-5 flex flex-wrap items-center gap-2">
-            <span className={CHIP}>{t("modules.script", "AI Script")}</span>
-            <span className={CHIP}>{t("common.ready", "Ready")}</span>
+    <div style={PAGE_STYLE}>
+      <div style={OVERLAY_STYLE} />
+
+      <div style={WRAP_STYLE}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 0.92fr",
+            gap: 20,
+          }}
+        >
+          <div style={CARD_STYLE}>
+            <div style={{ fontSize: 40, fontWeight: 900, marginBottom: 10 }}>
+              AI Script
+            </div>
+
+            <div
+              style={{
+                color: "rgba(255,255,255,0.84)",
+                lineHeight: 1.9,
+                marginBottom: 24,
+                fontSize: 17,
+              }}
+            >
+              Create screenplay drafts for short films, feature films, and series in a cinematic writing workflow.
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                marginBottom: 22,
+              }}
+            >
+              {FORMAT_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedFormat(item.id)}
+                  style={selectedFormat === item.id ? ACTIVE_BUTTON_STYLE : BUTTON_STYLE}
+                >
+                  {item.label} / {item.englishLabel}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 14,
+                }}
+              >
+                <input
+                  type="text"
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  placeholder="Genre"
+                  style={INPUT_STYLE}
+                />
+
+                <input
+                  type="text"
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  placeholder="Tone"
+                  style={INPUT_STYLE}
+                />
+
+                <input
+                  type="text"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  placeholder={currentFormat.durationPlaceholder}
+                  style={INPUT_STYLE}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 14,
+                }}
+              >
+                <input
+                  type="text"
+                  value={protagonist}
+                  onChange={(e) => setProtagonist(e.target.value)}
+                  placeholder="Main Character"
+                  style={INPUT_STYLE}
+                />
+
+                <input
+                  type="text"
+                  value={setting}
+                  onChange={(e) => setSetting(e.target.value)}
+                  placeholder="Setting / World"
+                  style={INPUT_STYLE}
+                />
+
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  style={INPUT_STYLE}
+                >
+                  <option value="English" style={{ background: "#111" }}>English</option>
+                  <option value="Persian" style={{ background: "#111" }}>Persian</option>
+                  <option value="Turkish" style={{ background: "#111" }}>Turkish</option>
+                  <option value="French" style={{ background: "#111" }}>French</option>
+                </select>
+              </div>
+
+              <textarea
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                placeholder="Write your story idea..."
+                style={{ ...TEXTAREA_STYLE, minHeight: 170 }}
+              />
+
+              <div
+                style={{
+                  color: "rgba(255,255,255,0.68)",
+                  fontSize: 14,
+                }}
+              >
+                Word count: {wordCount}
+              </div>
+
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  style={PRIMARY_BUTTON_STYLE}
+                >
+                  Generate Script Draft
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  style={SECONDARY_BUTTON_STYLE}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
           </div>
 
-          <SectionTitle
-            title={t("script.setupTitle", "Script Setup")}
-            desc={t("script.setupDesc", "Set your script parameters and generate a clean draft.")}
-          />
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className={LABEL}>{t("common.projectTitle", "Project Title")}</label>
-              <input className={INPUT} value={title} onChange={(e) => setTitle(e.target.value)} />
+          <div style={CARD_STYLE}>
+            <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 16 }}>
+              Preview
             </div>
 
-            <div>
-              <label className={LABEL}>{t("script.genre", "Genre")}</label>
-              <select className={INPUT} value={genre} onChange={(e) => setGenre(e.target.value)}>
-                <option>Drama</option>
-                <option>Thriller</option>
-                <option>Romance</option>
-                <option>Action</option>
-                <option>Sci-Fi</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={LABEL}>{t("script.tone", "Tone")}</label>
-              <select className={INPUT} value={tone} onChange={(e) => setTone(e.target.value)}>
-                <option>Cinematic</option>
-                <option>Dark</option>
-                <option>Emotional</option>
-                <option>Epic</option>
-                <option>Minimal</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={LABEL}>{t("common.language", "Language")}</label>
-              <select className={INPUT} value={language} onChange={(e) => setLanguage(e.target.value)}>
-                <option>English</option>
-                <option>Türkçe</option>
-                <option>فارسی</option>
-                <option>Français</option>
-                <option>العربية</option>
-                <option>Português</option>
-                <option>中文</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={LABEL}>{t("script.duration", "Duration")}</label>
-              <select className={INPUT} value={duration} onChange={(e) => setDuration(e.target.value)}>
-                <option>1 min</option>
-                <option>3 min</option>
-                <option>5 min</option>
-                <option>10 min</option>
-                <option>20 min</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={LABEL}>{t("script.topic", "Topic")}</label>
-              <input className={INPUT} value={topic} onChange={(e) => setTopic(e.target.value)} />
+            <div
+              style={{
+                ...PANEL_STYLE,
+                minHeight: 520,
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.8,
+                color: "rgba(255,255,255,0.88)",
+                overflow: "auto",
+              }}
+            >
+              {result || "Generated screenplay appears here..."}
             </div>
           </div>
+        </div>
 
-          <div className="mt-4">
-            <label className={LABEL}>{t("script.idea", "Core Idea")}</label>
-            <textarea
-              className={`${INPUT} min-h-[180px] resize-y`}
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              placeholder={t("script.ideaPlaceholder", "Write the main story idea here...")}
-            />
-          </div>
+        <div style={{ ...CARD_STYLE, marginTop: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontSize: 28, fontWeight: 900 }}>
+              Script History
+            </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button type="button" className={PRIMARY_BUTTON} onClick={generateScript}>
-              {t("script.generate", "Generate Script")}
+            <button
+              type="button"
+              onClick={handleClearHistory}
+              style={SECONDARY_BUTTON_STYLE}
+              disabled={history.length === 0}
+            >
+              Clear History
             </button>
-            <button type="button" className={SECONDARY_BUTTON} onClick={downloadScript} disabled={!script}>
-              {t("script.download", "Download Script")}
-            </button>
-            {typeof onBackHome === "function" ? (
-              <button type="button" className={SECONDARY_BUTTON} onClick={onBackHome}>
-                {t("common.home", "Home")}
-              </button>
-            ) : null}
-          </div>
-        </section>
-
-        <section className={PANEL}>
-          <SectionTitle
-            title={t("common.preview", "Preview")}
-            desc={t("script.previewDesc", "Generated script draft appears here.")}
-          />
-
-          <div className="mb-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-4 text-sm text-cyan-100">
-            {status}
           </div>
 
-          <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/80">
-            {t("script.wordCount", "Word count")}: {stats.words}
-          </div>
+          {history.length === 0 ? (
+            <div style={{ color: "rgba(255,255,255,0.66)" }}>
+              No script history yet.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {history.map((item) => (
+                <div key={item.id} style={PANEL_STYLE}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                    {item.title} — {item.genre}
+                  </div>
 
-          <pre className="min-h-[560px] overflow-auto rounded-2xl bg-black/40 p-4 text-sm leading-7 text-white/85 whitespace-pre-wrap">
-{script || t("script.empty", "No script yet.")}
-          </pre>
-        </section>
+                  <div
+                    style={{
+                      color: "rgba(255,255,255,0.82)",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {item.tone} • {item.duration} • {item.language}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: "rgba(255,255,255,0.82)",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {String(item.idea || "").slice(0, 180)}
+                  </div>
+
+                  <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectHistory(item)}
+                      style={SECONDARY_BUTTON_STYLE}
+                    >
+                      Select
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHistory(item.id)}
+                      style={SECONDARY_BUTTON_STYLE}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

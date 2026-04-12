@@ -1,27 +1,39 @@
-// src/ai/components/payments/PaymentPanel.jsx
-
 import React, { useMemo, useState } from "react";
 import {
   calculateUSDT,
-  validateTxHash,
   createCryptoInvoice,
+  validateTxHash,
 } from "../../payments/cryptoPayment";
+import { getAfrawoodWalletConfig } from "../../payments/afrawoodWallet";
 import {
   addTransaction,
+  getTransactions,
   updateTransaction,
 } from "../../payments/transactionManager";
-import { verifyTransaction } from "../../payments/blockchainVerify";
-import { getAfrawoodWalletConfig } from "../../payments/afrawoodWallet";
+import { verifyBlockchainPayment } from "../../payments/blockchainVerify";
 import { useAfraFlow } from "../../core/AfraFlowContext";
+
+const PANEL = "p-4 rounded-3xl bg-black text-white border border-white/10 space-y-4";
+const INPUT = "w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none";
+const BUTTON_PRIMARY =
+  "rounded-2xl px-4 py-3 font-bold bg-gradient-to-r from-cyan-400 to-amber-300 text-black";
+const BUTTON_SECONDARY =
+  "rounded-2xl px-4 py-3 font-semibold border border-white/10 bg-white/5 text-white";
+const CARD = "rounded-2xl border border-white/10 bg-white/5 p-4";
+
+function buildId(prefix = "tx") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function PaymentPanel() {
   const { addCreditsToUser } = useAfraFlow();
 
-  const walletConfig = useMemo(() => getAfrawoodWalletConfig(), []);
+  const wallet = useMemo(() => getAfrawoodWalletConfig(), []);
   const [credits, setCredits] = useState(20);
-  const [txHash, setTxHash] = useState("");
-  const [status, setStatus] = useState("");
   const [invoice, setInvoice] = useState(null);
+  const [txHash, setTxHash] = useState("");
+  const [network, setNetwork] = useState(wallet.network || "TRC20");
+  const [status, setStatus] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -29,18 +41,27 @@ export default function PaymentPanel() {
 
   function handleCreateInvoice() {
     const nextInvoice = createCryptoInvoice({ credits });
-    addTransaction(nextInvoice);
-    setInvoice(nextInvoice);
-    setStatus("Invoice created. Send payment to Afrawood wallet.");
+    const finalInvoice = {
+      ...nextInvoice,
+      id: buildId("invoice"),
+      receiveAddress: wallet.address,
+      coin: wallet.coin,
+      network,
+      createdAt: Date.now(),
+      status: "awaiting_payment",
+    };
+
+    addTransaction(finalInvoice);
+    setInvoice(finalInvoice);
+    setStatus("Invoice created");
   }
 
   async function handleCopyAddress() {
     try {
-      await navigator.clipboard.writeText(walletConfig.address);
+      await navigator.clipboard.writeText(wallet.address);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (error) {
-      console.error("Copy failed:", error);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
       setStatus("Copy failed");
     }
   }
@@ -52,81 +73,91 @@ export default function PaymentPanel() {
     }
 
     if (!validateTxHash(txHash)) {
-      setStatus("Invalid TX Hash");
+      setStatus("Invalid TX hash");
       return;
     }
 
     setVerifying(true);
     setStatus("Verifying payment...");
 
+    const txId = buildId("payment");
+
+    addTransaction({
+      id: txId,
+      invoiceId: invoice.id,
+      txHash: txHash.trim(),
+      credits,
+      amountUSDT: amount,
+      receiveAddress: wallet.address,
+      network,
+      coin: wallet.coin,
+      status: "pending_verification",
+      createdAt: Date.now(),
+    });
+
     try {
-      const pendingTx = {
-        id: `tx_${Date.now()}`,
-        invoiceId: invoice.id,
-        txHash: txHash.trim(),
-        credits: invoice.credits,
-        amountUSDT: invoice.amountUSDT,
-        network: walletConfig.network,
-        coin: walletConfig.coin,
-        receiveAddress: walletConfig.address,
-        status: "pending",
-        createdAt: Date.now(),
-      };
-
-      addTransaction(pendingTx);
-
-      const result = await verifyTransaction({
+      const result = await verifyBlockchainPayment({
         txHash: txHash.trim(),
         expectedAmount: amount,
-        walletAddress: walletConfig.address,
+        receiverAddress: wallet.address,
+        network,
       });
 
       if (!result?.ok) {
-        updateTransaction(pendingTx.id, {
+        updateTransaction(txId, {
           status: "failed",
-          reason: result?.reason || "verification failed",
-          checkedAt: Date.now(),
+          reason: result?.reason || "Verification failed",
+          verificationResult: result,
         });
-        setStatus("Payment not valid");
+        setStatus(result?.reason || "Payment not verified");
         return;
       }
 
-      updateTransaction(pendingTx.id, {
+      updateTransaction(txId, {
         status: "approved",
+        verifiedAmount: result.amount,
+        verifiedTo: result.to,
+        verificationResult: result,
         approvedAt: Date.now(),
-        verifiedNetwork: result.network || walletConfig.network,
-        verifiedAmount: result.amount ?? amount,
-        verifiedTo: result.to || walletConfig.address,
       });
 
       updateTransaction(invoice.id, {
-        status: "approved",
-        approvedAt: Date.now(),
+        status: "paid",
         txHash: txHash.trim(),
+        paidAt: Date.now(),
       });
 
-      addCreditsToUser(invoice.credits);
-      setStatus("Payment verified, credits added");
+      addCreditsToUser(credits);
+      setStatus("Payment verified and credits added");
       setTxHash("");
     } catch (error) {
-      console.error("Verify payment error:", error);
-      setStatus("Verify failed");
+      updateTransaction(txId, {
+        status: "failed",
+        reason: error?.message || "Verification failed",
+      });
+      setStatus(error?.message || "Verification failed");
     } finally {
       setVerifying(false);
     }
   }
 
+  const recentTransactions = getTransactions().slice(0, 5);
+
   return (
-    <div className="p-4 rounded-xl bg-black text-white space-y-4 border border-neutral-800">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">Buy Credits</h2>
-        <p className="text-sm text-neutral-400">
-          Pay with {walletConfig.coin} on {walletConfig.network}
-        </p>
+    <div className={PANEL}>
+      <div>
+        <h2 className="text-xl font-black">Crypto Payment</h2>
+        <div className="text-sm text-white/60">
+          Buy custom credits and verify with TX hash
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <label className="block text-sm">Credits: {credits}</label>
+      <div className={CARD}>
+        <div className="mb-2 flex items-center justify-between text-sm text-white/70">
+          <span>Credits</span>
+          <span className="font-bold text-white">{credits}</span>
+        </div>
+
         <input
           type="range"
           min={20}
@@ -134,66 +165,108 @@ export default function PaymentPanel() {
           step={10}
           value={credits}
           onChange={(e) => setCredits(Number(e.target.value))}
-          className="w-full"
+          className="w-full accent-cyan-400"
         />
-        <div className="text-sm text-neutral-300">
-          {credits} credits = {amount} USDT
+
+        <div className="mt-3 text-sm text-white/70">
+          {credits} credits = <span className="font-bold text-white">{amount} USDT</span>
         </div>
       </div>
 
-      <button
-        onClick={handleCreateInvoice}
-        className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-medium hover:bg-yellow-400 transition"
-      >
+      <div className={CARD}>
+        <div className="mb-2 text-sm text-white/70">Network</div>
+        <select
+          value={network}
+          onChange={(e) => setNetwork(e.target.value)}
+          className={INPUT}
+        >
+          <option value="TRC20" className="bg-black">TRC20</option>
+          <option value="ERC20" className="bg-black">ERC20</option>
+        </select>
+      </div>
+
+      <button type="button" onClick={handleCreateInvoice} className={BUTTON_PRIMARY}>
         Create Invoice
       </button>
 
-      <div className="space-y-2 rounded-xl border border-neutral-800 p-3 bg-neutral-950">
-        <div className="text-sm text-neutral-400">Afrawood Wallet Address</div>
-        <div className="break-all text-sm">{walletConfig.address}</div>
+      <div className={CARD}>
+        <div className="mb-2 text-sm text-white/70">Afrawood Wallet</div>
+        <div className="break-all text-sm text-white">{wallet.address}</div>
+
         <button
+          type="button"
           onClick={handleCopyAddress}
-          className="px-3 py-2 rounded-lg bg-neutral-800 text-white hover:bg-neutral-700 transition"
+          className={`${BUTTON_SECONDARY} mt-3`}
         >
           {copied ? "Copied" : "Copy Address"}
         </button>
       </div>
 
-      {invoice && (
-        <div className="space-y-2 rounded-xl border border-neutral-800 p-3 bg-neutral-950">
-          <div className="text-sm font-medium">Invoice Preview</div>
-          <div className="text-sm text-neutral-300">
-            Credits: {invoice.credits}
+      {invoice ? (
+        <div className={CARD}>
+          <div className="text-sm text-white/70">Invoice Preview</div>
+          <div className="mt-2 text-sm text-white/90">
+            Invoice ID: {invoice.id}
           </div>
-          <div className="text-sm text-neutral-300">
+          <div className="mt-1 text-sm text-white/90">
             Amount: {invoice.amountUSDT} {invoice.coin}
           </div>
-          <div className="text-sm text-neutral-300">
+          <div className="mt-1 text-sm text-white/90">
             Network: {invoice.network}
           </div>
-          <div className="text-sm text-neutral-300 break-all">
-            Receive Address: {invoice.receiveAddress}
+          <div className="mt-1 text-sm text-white/90">
+            Credits: {invoice.credits}
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div className="space-y-2">
+      <div className={CARD}>
+        <div className="mb-2 text-sm text-white/70">Transaction Hash</div>
         <input
-          placeholder="Paste TX Hash"
           value={txHash}
           onChange={(e) => setTxHash(e.target.value)}
-          className="w-full p-2 rounded-lg text-black"
+          placeholder="Paste TX hash"
+          className={INPUT}
         />
+
         <button
+          type="button"
           onClick={handleVerify}
           disabled={verifying}
-          className="px-4 py-2 rounded-lg bg-green-500 text-black font-medium hover:bg-green-400 transition disabled:opacity-60"
+          className={`${BUTTON_PRIMARY} mt-3 w-full ${verifying ? "opacity-60" : ""}`}
         >
           {verifying ? "Verifying..." : "Verify Payment"}
         </button>
       </div>
 
-      {!!status && <div className="text-sm text-neutral-200">{status}</div>}
+      {status ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
+          {status}
+        </div>
+      ) : null}
+
+      <div className={CARD}>
+        <div className="mb-3 text-sm font-bold text-white">Recent Transactions</div>
+
+        {!recentTransactions.length ? (
+          <div className="text-sm text-white/50">No transactions yet</div>
+        ) : (
+          <div className="space-y-3">
+            {recentTransactions.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/80"
+              >
+                <div className="font-semibold text-white">{item.id}</div>
+                <div className="mt-1">Status: {item.status}</div>
+                {item.amountUSDT ? <div>Amount: {item.amountUSDT} USDT</div> : null}
+                {item.credits ? <div>Credits: {item.credits}</div> : null}
+                {item.reason ? <div>Reason: {item.reason}</div> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,156 +1,152 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import {
-  loginWithEmail as loginWithEmailService,
-  loginWithGoogleMock as loginWithGoogleMockService,
-  logoutUser,
-  restoreSession,
-  signupWithEmail as signupWithEmailService,
-} from "../ai/authService.js";
-import { updateCurrentSessionUser } from "../ai/userStore.js";
+import React, { createContext, useContext, useMemo, useState } from "react";
 
+const STORAGE_KEY = "afrawood_auth_user";
 const AuthContext = createContext(null);
 
+function readStoredUser() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUser(user) {
+  if (typeof window === "undefined") return;
+  if (!user) {
+    window.localStorage.removeItem(STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+}
+
+function goToRoute(route) {
+  const finalRoute = route.startsWith("/") ? route : `/${route}`;
+  window.history.pushState({}, "", finalRoute);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function detectOwnerMode() {
+  if (typeof window === "undefined") return false;
+
+  const host = String(window.location.hostname || "").toLowerCase();
+
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1"
+  );
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState("login");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [user, setUser] = useState(readStoredUser);
 
-  useEffect(() => {
-    let active = true;
+  const value = useMemo(() => {
+    const ownerMode = detectOwnerMode();
+    const isAuthenticated = Boolean(user);
+    const canAccessApp = ownerMode || isAuthenticated;
 
-    async function bootstrap() {
-      setIsLoading(true);
-      const result = await restoreSession();
+    async function signup({ fullName, email, password }) {
+      const res = await fetch("http://127.0.0.1:4242/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ fullName, email, password }),
+      });
 
-      if (!active) return;
+      const data = await res.json().catch(() => ({}));
 
-      if (result.ok && result.user) {
-        setUser(result.user);
+      if (!res.ok) {
+        throw new Error(data?.error || "Signup failed");
       }
 
-      setIsLoading(false);
+      setUser(data.user);
+      writeStoredUser(data.user);
+      return data.user;
     }
 
-    bootstrap();
+    async function login({ email, password }) {
+      const res = await fetch("http://127.0.0.1:4242/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    return () => {
-      active = false;
-    };
-  }, []);
+      const data = await res.json().catch(() => ({}));
 
-  function openAuth(mode = "login") {
-    setAuthMode(mode === "signup" ? "signup" : "login");
-    setIsAuthOpen(true);
-  }
-
-  function closeAuth() {
-    if (isSubmitting) return;
-    setIsAuthOpen(false);
-  }
-
-  function switchAuthMode(mode = "login") {
-    setAuthMode(mode === "signup" ? "signup" : "login");
-  }
-
-  async function loginWithEmail(payload) {
-    setIsSubmitting(true);
-    try {
-      const result = await loginWithEmailService(payload);
-      if (result.ok) {
-        setUser(result.user);
-        setIsAuthOpen(false);
+      if (!res.ok) {
+        throw new Error(data?.error || "Login failed");
       }
-      return result;
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
 
-  async function signupWithEmail(payload) {
-    setIsSubmitting(true);
-    try {
-      const result = await signupWithEmailService(payload);
-      if (result.ok) {
-        setUser(result.user);
-        setIsAuthOpen(false);
-      }
-      return result;
-    } finally {
-      setIsSubmitting(false);
+      setUser(data.user);
+      writeStoredUser(data.user);
+      return data.user;
     }
-  }
 
-  async function loginWithGoogleMock() {
-    setIsSubmitting(true);
-    try {
-      const result = await loginWithGoogleMockService();
-      if (result.ok) {
-        setUser(result.user);
-        setIsAuthOpen(false);
-      }
-      return result;
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function logout() {
-    setIsSubmitting(true);
-    try {
-      await logoutUser();
+    function logout() {
       setUser(null);
-      return { ok: true };
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+      writeStoredUser(null);
 
-  function requireAuth(mode = "login") {
-    if (user) {
+      if (!ownerMode) {
+        goToRoute("/signup");
+      } else {
+        goToRoute("/");
+      }
+    }
+
+    function openAuth(mode = "signup") {
+      goToRoute(mode === "login" ? "/login" : "/signup");
+    }
+
+    function requireAuth() {
+      if (ownerMode) return true;
+
+      if (!user) {
+        goToRoute("/signup");
+        return false;
+      }
+
       return true;
     }
-    openAuth(mode);
-    return false;
-  }
 
-  function refreshUserFromPatch(patch = {}) {
-    const updated = updateCurrentSessionUser(patch);
-    if (updated) {
-      setUser(updated);
+    function refreshUserFromPatch(patch = {}) {
+      setUser((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, ...patch };
+        writeStoredUser(next);
+        return next;
+      });
     }
-    return updated;
-  }
 
-  const value = useMemo(
-    () => ({
+    return {
       user,
-      isAuthenticated: Boolean(user),
-      isAuthOpen,
-      authMode,
-      isLoading,
-      isSubmitting,
-      openAuth,
-      closeAuth,
-      switchAuthMode,
-      loginWithEmail,
-      signupWithEmail,
-      loginWithGoogleMock,
+      isAuthenticated,
+      ownerMode,
+      canAccessApp,
+      signup,
+      login,
       logout,
+      openAuth,
       requireAuth,
       refreshUserFromPatch,
-    }),
-    [user, isAuthOpen, authMode, isLoading, isSubmitting]
-  );
+    };
+  }, [user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
+  const context = useContext(AuthContext);
+
+  if (!context) {
     throw new Error("useAuth must be used inside AuthProvider");
   }
-  return ctx;
+
+  return context;
 }

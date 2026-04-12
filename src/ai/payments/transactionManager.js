@@ -1,37 +1,48 @@
-// src/ai/payments/transactionManager.js
-
 const STORAGE_KEY = "afrawood_transactions";
 
-export function getTransactions() {
+function readAll() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function save(list) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+function writeAll(items) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
 }
 
-export function addTransaction(tx) {
-  const list = getTransactions();
-  list.push(tx);
-  save(list);
-  return tx;
+export function getTransactions() {
+  return readAll();
 }
 
-export function updateTransaction(id, updates) {
-  const list = getTransactions().map((t) =>
-    t.id === id ? { ...t, ...updates } : t
+export function getTransactionById(id) {
+  return readAll().find((item) => item.id === id) || null;
+}
+
+export function addTransaction(transaction) {
+  const items = readAll();
+  items.unshift(transaction);
+  writeAll(items);
+  return transaction;
+}
+
+export function updateTransaction(id, patch) {
+  const items = readAll();
+  const next = items.map((item) =>
+    item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item
   );
-  save(list);
-  return list.find((t) => t.id === id);
+  writeAll(next);
+  return next.find((item) => item.id === id) || null;
 }
 
-export function approveTransaction(id) {
-  return updateTransaction(id, {
-    status: "approved",
-    approvedAt: Date.now(),
-  });
+export function removeTransaction(id) {
+  const items = readAll().filter((item) => item.id !== id);
+  writeAll(items);
+}
+
+export function clearTransactions() {
+  localStorage.removeItem(STORAGE_KEY);
 }

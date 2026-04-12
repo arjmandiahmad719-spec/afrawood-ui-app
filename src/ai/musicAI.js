@@ -1,165 +1,129 @@
-function safeText(value, fallback = "") {
-  if (typeof value !== "string") return fallback;
-  return value.trim();
+const REPLICATE_API_KEY = import.meta.env.VITE_REPLICATE_API_KEY;
+const REPLICATE_API_URL = "https://api.replicate.com/v1/predictions";
+const MUSIC_HISTORY_KEY = "afrawood_music_history";
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function safeNumber(value, fallback = 0) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
-}
-
-function estimateMusicDuration(prompt = "", bars = 16, bpm = 100) {
-  const promptWeight = Math.min(18, Math.max(0, safeText(prompt).length / 18));
-  const musicalBars = safeNumber(bars, 16);
-  const tempo = Math.max(60, safeNumber(bpm, 100));
-  const secFromBars = (musicalBars * 4 * 60) / tempo;
-  return Math.max(8, Math.round(secFromBars + promptWeight));
-}
-
-function buildInstrumentConfig(input = {}) {
-  return {
-    percussion: Boolean(input.includePercussion),
-    bass: Boolean(input.includeBass),
-    pads: Boolean(input.includePads),
-    piano: Boolean(input.includePiano),
-    strings: Boolean(input.includeStrings),
-  };
-}
-
-function buildProviderConfig(providerValue = "mock_ready") {
-  const provider = safeText(providerValue, "mock_ready");
-
-  return {
-    provider,
-    mode:
-      provider === "api_later"
-        ? "remote_api"
-        : provider === "local_later"
-          ? "local_engine"
-          : "mock_preview",
-    connected: false,
-    readyForIntegration: true,
-  };
-}
-
-function detectStructure(genre, energy, bars) {
-  const g = safeText(genre).toLowerCase();
-  const e = safeText(energy).toLowerCase();
-  const totalBars = safeNumber(bars, 16);
-
-  if (g.includes("hybrid") || e === "high") {
-    return {
-      introBars: Math.max(2, Math.round(totalBars * 0.2)),
-      mainBars: Math.max(4, Math.round(totalBars * 0.55)),
-      outroBars: Math.max(2, totalBars - Math.round(totalBars * 0.75)),
-      shape: "rise_hit_release",
-    };
+function safeParse(val, fallback = []) {
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
   }
+}
 
-  if (g.includes("ambient")) {
-    return {
-      introBars: Math.max(2, Math.round(totalBars * 0.3)),
-      mainBars: Math.max(4, Math.round(totalBars * 0.5)),
-      outroBars: Math.max(2, totalBars - Math.round(totalBars * 0.8)),
-      shape: "slow_bloom",
-    };
+function getHeaders() {
+  if (!REPLICATE_API_KEY) {
+    throw new Error("Missing Replicate API Key");
   }
 
   return {
-    introBars: Math.max(2, Math.round(totalBars * 0.25)),
-    mainBars: Math.max(4, Math.round(totalBars * 0.5)),
-    outroBars: Math.max(2, totalBars - Math.round(totalBars * 0.75)),
-    shape: "balanced_arc",
+    "Content-Type": "application/json",
+    Authorization: `Token ${REPLICATE_API_KEY}`,
   };
 }
 
-export function buildMusicPayload(input = {}) {
-  const projectTitle = safeText(input.projectTitle, "Untitled Music Project");
-  const prompt = safeText(input.prompt);
-  const provider = buildProviderConfig(input.provider);
+export function getMusicHistory() {
+  if (typeof window === "undefined") return [];
+  return safeParse(localStorage.getItem(MUSIC_HISTORY_KEY), []);
+}
 
-  const genre = safeText(input.genre, "cinematic");
-  const mood = safeText(input.mood, "emotional");
-  const energy = safeText(input.energy, "medium");
-  const bpm = safeNumber(input.bpm, 92);
-  const keySignature = safeText(input.keySignature, "D minor");
-  const bars = safeNumber(input.bars, 16);
-  const loopable = Boolean(input.loopable);
+export function saveMusicHistory(item) {
+  if (typeof window === "undefined") return;
+  const current = getMusicHistory();
+  const next = [item, ...current].slice(0, 30);
+  localStorage.setItem(MUSIC_HISTORY_KEY, JSON.stringify(next));
+}
 
-  const outputFormat = safeText(input.outputFormat, "wav");
-  const sampleRate = safeNumber(input.sampleRate, 22050);
-  const normalizeAudio = Boolean(input.normalizeAudio);
-  const useForBackgroundMusic = Boolean(input.useForBackgroundMusic);
+export function removeMusicHistory(id) {
+  if (typeof window === "undefined") return;
+  const current = getMusicHistory();
+  const next = current.filter((i) => i.id !== id);
+  localStorage.setItem(MUSIC_HISTORY_KEY, JSON.stringify(next));
+}
 
-  const estimatedDurationSec = estimateMusicDuration(prompt, bars, bpm);
-  const structure = detectStructure(genre, energy, bars);
-  const instruments = buildInstrumentConfig(input);
+export function clearMusicHistory() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(MUSIC_HISTORY_KEY);
+}
+
+export async function generateMusic(prompt) {
+  if (!prompt || !prompt.trim()) {
+    throw new Error("Prompt is required");
+  }
+
+  const res = await fetch(REPLICATE_API_URL, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      version: "musicgen", // ساده و عمومی
+      input: {
+        prompt: prompt.trim(),
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error("Music request failed");
+  }
+
+  const data = await res.json();
+  const id = data.id;
+
+  if (!id) {
+    throw new Error("No prediction id");
+  }
+
+  // polling
+  let outputUrl = null;
+
+  for (let i = 0; i < 120; i++) {
+    await sleep(3000);
+
+    const poll = await fetch(`${REPLICATE_API_URL}/${id}`, {
+      headers: getHeaders(),
+    });
+
+    const pollData = await poll.json();
+
+    if (pollData.status === "succeeded") {
+      outputUrl = Array.isArray(pollData.output)
+        ? pollData.output[0]
+        : pollData.output;
+      break;
+    }
+
+    if (pollData.status === "failed") {
+      throw new Error("Music generation failed");
+    }
+  }
+
+  if (!outputUrl) {
+    throw new Error("Timeout");
+  }
+
+  const record = {
+    id: `${id}-${Date.now()}`,
+    prompt,
+    url: outputUrl,
+    createdAt: Date.now(),
+  };
+
+  saveMusicHistory(record);
 
   return {
-    app: "Afrawood",
-    feature: "music",
-    version: 1,
-    createdAt: new Date().toISOString(),
-
-    project: {
-      title: projectTitle,
-    },
-
-    input: {
-      prompt,
-      promptLength: prompt.length,
-      promptWordCount: prompt ? prompt.split(/\s+/).filter(Boolean).length : 0,
-    },
-
-    provider,
-
-    music: {
-      genre,
-      mood,
-      energy,
-      bpm,
-      keySignature,
-      bars,
-      loopable,
-      structure,
-      instruments,
-    },
-
-    audio: {
-      format: outputFormat,
-      sampleRate,
-      channels: 2,
-      bitDepth: 16,
-      normalizeAudio,
-      estimatedDurationSec,
-    },
-
-    output: {
-      mockPreviewAvailable: true,
-      realProviderReady: true,
-      backgroundMusicReady: useForBackgroundMusic,
-      mergeReady: true,
-      exportReady: true,
-    },
-
-    exportHint: {
-      recommendedNextPage: useForBackgroundMusic ? "merge" : "export",
-      recommendedUse: useForBackgroundMusic ? "background_music" : "standalone_music",
-    },
-
-    notes: {
-      status:
-        "Music payload آماده است. اتصال واقعی provider بعداً باید به این لایه وصل شود.",
-    },
+    url: outputUrl,
+    record,
   };
 }
 
-export async function prepareMusicPayload(input = {}) {
-  return buildMusicPayload(input);
+export function downloadMusic(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "afrawood-music.mp3";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
-
-export async function createMusicPayload(input = {}) {
-  return buildMusicPayload(input);
-}
-
-export default buildMusicPayload;

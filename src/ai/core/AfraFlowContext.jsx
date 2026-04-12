@@ -1,194 +1,167 @@
-import React, { createContext, useContext, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { getAIEngineInfo } from "./afraAI";
 
-/**
- * AfraFlow Context
- * Central state for:
- * Idea → Story → Scene → Shot → Dialogue → Image → Video
- */
+const STORAGE_KEY = "afrawood-flow-state-v5";
 
-const AfraFlowContext = createContext(null);
+const DEFAULT_STATE = {
+  activeModule: "landing",
+  script: {
+    text: "",
+    lastUpdatedAt: null,
+    meta: null,
+  },
+  ai: {
+    engine: {
+      enabled: false,
+      provider: "openai",
+      ready: false,
+      model: "",
+      baseUrl: "",
+      hasApiKey: false,
+      temperature: 0.7,
+      maxTokens: 1800,
+    },
+  },
+};
+
+const AfraFlowContext = createContext({
+  state: DEFAULT_STATE,
+  setActiveModule: () => {},
+  setScriptText: () => {},
+  updateScriptMeta: () => {},
+  refreshAIStatus: () => {},
+  resetScriptState: () => {},
+});
+
+function safeParse(value, fallback) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadInitialState() {
+  if (typeof window === "undefined") {
+    return {
+      ...DEFAULT_STATE,
+      ai: {
+        engine: getAIEngineInfo(),
+      },
+    };
+  }
+
+  const stored = safeParse(window.localStorage.getItem(STORAGE_KEY), null);
+
+  if (!stored || typeof stored !== "object") {
+    return {
+      ...DEFAULT_STATE,
+      ai: {
+        engine: getAIEngineInfo(),
+      },
+    };
+  }
+
+  return {
+    ...DEFAULT_STATE,
+    ...stored,
+    script: {
+      ...DEFAULT_STATE.script,
+      ...(stored.script || {}),
+    },
+    ai: {
+      ...DEFAULT_STATE.ai,
+      ...(stored.ai || {}),
+      engine: getAIEngineInfo(),
+    },
+  };
+}
 
 export function AfraFlowProvider({ children }) {
-  const [project, setProject] = useState({
-    title: "",
-    topic: "",
-    genre: "drama",
-    tone: "cinematic",
-    language: "en",
-    platform: "youtube",
-    format: "short_film",
-    duration: 5,
+  const [state, setState] = useState(loadInitialState);
 
-    logline: "",
-    synopsis: "",
-    recommendation: "",
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-    scenes: [],
-  });
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
 
-  // 🔥 USER STATE (NEW - SAFE)
-  const [user, setUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("afrawood_user")) || {
-        plan: "free",
-        credits: 0,
-      };
-    } catch {
-      return { plan: "free", credits: 0 };
-    }
-  });
-
-  /* =========================
-     USER / CREDIT SYSTEM (NEW)
-  ========================= */
-
-  const updateUser = (data = {}) => {
-    const updated = { ...user, ...data };
-    setUser(updated);
-    localStorage.setItem("afrawood_user", JSON.stringify(updated));
-    return updated;
-  };
-
-  const addCredits = (amount = 0) => {
-    if (!amount || amount <= 0) return user;
-
-    const updated = {
-      ...user,
-      credits: (user.credits || 0) + amount,
-    };
-
-    setUser(updated);
-    localStorage.setItem("afrawood_user", JSON.stringify(updated));
-
-    return updated;
-  };
-
-  /* =========================
-     Script Loader
-  ========================= */
-  const loadScriptResult = (result) => {
-    if (!result) return;
-
-    setProject((prev) => ({
+  const setActiveModule = useCallback((module) => {
+    setState((prev) => ({
       ...prev,
-      title: result.title || prev.title,
-      topic: result.topic || prev.topic,
-      genre: result.genre || prev.genre,
-      tone: result.tone || prev.tone,
-      language: result.language || prev.language,
-      platform: result.platform || prev.platform,
-      format: result.format || prev.format,
-      duration: result.duration || prev.duration,
-
-      logline: result.logline || "",
-      synopsis: result.synopsis || "",
-      recommendation: result.recommendation || "",
-
-      scenes: Array.isArray(result.scenes) ? result.scenes : [],
+      activeModule: String(module || "landing"),
     }));
-  };
+  }, []);
 
-  /* =========================
-     Scene Management
-  ========================= */
-  const replaceScenes = (scenes) => {
-    setProject((prev) => ({
+  const setScriptText = useCallback((text, meta = null) => {
+    setState((prev) => ({
       ...prev,
-      scenes: Array.isArray(scenes) ? scenes : [],
+      script: {
+        ...prev.script,
+        text: String(text || ""),
+        meta: meta ?? prev.script.meta ?? null,
+        lastUpdatedAt: Date.now(),
+      },
     }));
-  };
+  }, []);
 
-  const addScene = (scene) => {
-    setProject((prev) => ({
+  const updateScriptMeta = useCallback((meta) => {
+    setState((prev) => ({
       ...prev,
-      scenes: [...(prev.scenes || []), scene],
+      script: {
+        ...prev.script,
+        meta: meta ?? null,
+        lastUpdatedAt: Date.now(),
+      },
     }));
-  };
+  }, []);
 
-  const removeScene = (sceneId) => {
-    setProject((prev) => ({
+  const refreshAIStatus = useCallback(() => {
+    setState((prev) => ({
       ...prev,
-      scenes: (prev.scenes || []).filter((s) => s.id !== sceneId),
+      ai: {
+        ...prev.ai,
+        engine: getAIEngineInfo(),
+      },
     }));
-  };
+  }, []);
 
-  const updateScene = (sceneId, data) => {
-    setProject((prev) => ({
+  const resetScriptState = useCallback(() => {
+    setState((prev) => ({
       ...prev,
-      scenes: (prev.scenes || []).map((scene) =>
-        scene.id === sceneId ? { ...scene, ...data } : scene
-      ),
+      script: {
+        text: "",
+        lastUpdatedAt: null,
+        meta: null,
+      },
     }));
-  };
+  }, []);
 
-  /* =========================
-     Shot Management
-  ========================= */
-  const updateShot = (shotId, data) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: (prev.scenes || []).map((scene) => ({
-        ...scene,
-        shots: (scene.shots || []).map((shot) =>
-          shot.id === shotId ? { ...shot, ...data } : shot
-        ),
-      })),
-    }));
-  };
-
-  const addShotToScene = (sceneId, shot) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: (prev.scenes || []).map((scene) =>
-        scene.id === sceneId
-          ? {
-              ...scene,
-              shots: [...(scene.shots || []), shot],
-            }
-          : scene
-      ),
-    }));
-  };
-
-  const removeShotFromScene = (sceneId, shotId) => {
-    setProject((prev) => ({
-      ...prev,
-      scenes: (prev.scenes || []).map((scene) =>
-        scene.id === sceneId
-          ? {
-              ...scene,
-              shots: (scene.shots || []).filter((s) => s.id !== shotId),
-            }
-          : scene
-      ),
-    }));
-  };
-
-  /* =========================
-     Values
-  ========================= */
-  const value = {
-    ...project,
-
-    // user
-    user,
-    updateUser,
-    addCredits,
-
-    // script
-    loadScriptResult,
-
-    // scenes
-    replaceScenes,
-    addScene,
-    removeScene,
-    updateScene,
-
-    // shots
-    updateShot,
-    addShotToScene,
-    removeShotFromScene,
-  };
+  const value = useMemo(
+    () => ({
+      state,
+      setActiveModule,
+      setScriptText,
+      updateScriptMeta,
+      refreshAIStatus,
+      resetScriptState,
+    }),
+    [
+      state,
+      setActiveModule,
+      setScriptText,
+      updateScriptMeta,
+      refreshAIStatus,
+      resetScriptState,
+    ]
+  );
 
   return (
     <AfraFlowContext.Provider value={value}>
@@ -198,9 +171,5 @@ export function AfraFlowProvider({ children }) {
 }
 
 export function useAfraFlow() {
-  const ctx = useContext(AfraFlowContext);
-  if (!ctx) {
-    throw new Error("useAfraFlow must be used inside AfraFlowProvider");
-  }
-  return ctx;
+  return useContext(AfraFlowContext);
 }

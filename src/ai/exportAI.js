@@ -1,157 +1,109 @@
-function safeNumber(value, fallback = 0) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
+const EXPORT_HISTORY_KEY = "afrawood_export_history";
+
+function safeParse(val, fallback = []) {
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
 }
 
-function safeText(value, fallback = "") {
-  if (typeof value !== "string") return fallback;
-  return value.trim();
+export function getExportHistory() {
+  if (typeof window === "undefined") return [];
+  return safeParse(localStorage.getItem(EXPORT_HISTORY_KEY), []);
 }
 
-function normalizeList(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(Boolean);
+export function saveExportHistory(item) {
+  if (typeof window === "undefined") return;
+  const current = getExportHistory();
+  const next = [item, ...current].slice(0, 20);
+  localStorage.setItem(EXPORT_HISTORY_KEY, JSON.stringify(next));
 }
 
-function inferResolution(resolution, ratio) {
-  const map = {
-    "1080p": { width: 1920, height: 1080 },
-    "2k": { width: 2560, height: 1440 },
-    "4k": { width: 3840, height: 2160 },
+export function clearExportHistory() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(EXPORT_HISTORY_KEY);
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+export async function exportVideo({
+  images = [],
+  audioUrl = "",
+  fps = 1,
+  durationPerImage = 2,
+}) {
+  if (!images.length) {
+    throw new Error("No images to export");
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const firstImg = await loadImage(images[0]);
+  canvas.width = firstImg.width;
+  canvas.height = firstImg.height;
+
+  const stream = canvas.captureStream(fps);
+  const mediaRecorder = new MediaRecorder(stream, {
+    mimeType: "video/webm",
+  });
+
+  let chunks = [];
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
   };
 
-  if (ratio === "9:16") return { width: 1080, height: 1920 };
-  if (ratio === "1:1") return { width: 1080, height: 1080 };
+  mediaRecorder.start();
 
-  return map[resolution] || { width: 1920, height: 1080 };
-}
+  for (let i = 0; i < images.length; i++) {
+    const img = await loadImage(images[i]);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-function normalizeSourceItem(item, type, index) {
+    await new Promise((r) =>
+      setTimeout(r, durationPerImage * 1000)
+    );
+  }
+
+  mediaRecorder.stop();
+
+  await new Promise((resolve) => {
+    mediaRecorder.onstop = resolve;
+  });
+
+  const blob = new Blob(chunks, { type: "video/webm" });
+  const url = URL.createObjectURL(blob);
+
+  const record = {
+    id: Date.now(),
+    images,
+    audioUrl,
+    url,
+    createdAt: Date.now(),
+  };
+
+  saveExportHistory(record);
+
   return {
-    id: item?.id || `${type}_${index + 1}`,
-    type,
-    name: item?.name || `${type}_${index + 1}`,
-    mimeType: item?.type || "",
-    size: safeNumber(item?.size, 0),
-    kind: item?.kind || type,
+    url,
+    record,
   };
 }
 
-function buildFileSummary(list = []) {
-  return {
-    count: list.length,
-    totalSize: list.reduce((sum, item) => sum + safeNumber(item?.size, 0), 0),
-  };
+export function downloadVideo(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "afrawood-final-video.webm";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
-
-export function buildExportPayload(input = {}) {
-  const title = safeText(input.projectTitle, "Untitled Project");
-  const description = safeText(input.description);
-  const tags = normalizeList(input.tags).map((tag) => safeText(tag)).filter(Boolean);
-
-  const sourceVideos = normalizeList(input.sourceVideos).map((item, index) =>
-    normalizeSourceItem(item, "video", index)
-  );
-  const sourceAudios = normalizeList(input.sourceAudios).map((item, index) =>
-    normalizeSourceItem(item, "audio", index)
-  );
-  const sourceSubtitles = normalizeList(input.sourceSubtitles).map((item, index) =>
-    normalizeSourceItem(item, "subtitle", index)
-  );
-  const sourceImages = normalizeList(input.sourceImages).map((item, index) =>
-    normalizeSourceItem(item, "image", index)
-  );
-
-  const output = input.output || {};
-  const timeline = input.timeline || {};
-
-  const ratio = safeText(output.ratio, "16:9");
-  const resolution = safeText(output.resolution, "1080p");
-  const frameSize = inferResolution(resolution, ratio);
-
-  const payload = {
-    app: "Afrawood",
-    feature: "export",
-    version: 1,
-    createdAt: new Date().toISOString(),
-
-    project: {
-      title,
-      description,
-      tags,
-    },
-
-    sources: {
-      videos: sourceVideos,
-      audios: sourceAudios,
-      subtitles: sourceSubtitles,
-      images: sourceImages,
-      summary: {
-        videos: buildFileSummary(sourceVideos),
-        audios: buildFileSummary(sourceAudios),
-        subtitles: buildFileSummary(sourceSubtitles),
-        images: buildFileSummary(sourceImages),
-        totalFiles:
-          sourceVideos.length +
-          sourceAudios.length +
-          sourceSubtitles.length +
-          sourceImages.length,
-        totalSize:
-          buildFileSummary(sourceVideos).totalSize +
-          buildFileSummary(sourceAudios).totalSize +
-          buildFileSummary(sourceSubtitles).totalSize +
-          buildFileSummary(sourceImages).totalSize,
-      },
-    },
-
-    output: {
-      format: safeText(output.format, "mp4"),
-      ratio,
-      resolution,
-      width: frameSize.width,
-      height: frameSize.height,
-      fps: safeNumber(output.fps, 24),
-      quality: safeText(output.quality, "high"),
-      videoCodec: safeText(output.videoCodec, "h264"),
-      audioCodec: safeText(output.audioCodec, "aac"),
-      includeBurnedSubtitles: Boolean(output.includeBurnedSubtitles),
-      includeSoftSubtitles: Boolean(output.includeSoftSubtitles),
-      includePosterFrame: Boolean(output.includePosterFrame),
-      normalizeAudio: Boolean(output.normalizeAudio),
-      trimSilence: Boolean(output.trimSilence),
-      loudnessTarget: safeText(output.loudnessTarget, "-14 LUFS"),
-      watermarkText: safeText(output.watermarkText),
-      fileName: safeText(output.fileName),
-    },
-
-    timeline: {
-      strategy: safeText(timeline.strategy, "keep_order"),
-      transition: safeText(timeline.transition, "crossfade"),
-      crossfadeMs: safeNumber(timeline.crossfadeMs, 300),
-      gapMode: safeText(timeline.gapMode, "none"),
-      outroSeconds: safeNumber(timeline.outroSeconds, 1.5),
-    },
-
-    backend: {
-      ffmpegRequired: true,
-      providerReady: true,
-      renderReady: false,
-      reason:
-        "UI payload is ready. Real export render should be connected later via ffmpeg/backend.",
-    },
-
-    notes: safeText(input.notes),
-  };
-
-  return payload;
-}
-
-export async function prepareExportPayload(input = {}) {
-  return buildExportPayload(input);
-}
-
-export async function createExportPayload(input = {}) {
-  return buildExportPayload(input);
-}
-
-export default buildExportPayload;
